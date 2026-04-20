@@ -94,7 +94,7 @@ def amortize(
     }
 
 
-def print_text(data: dict) -> None:
+def print_text(data: dict, show_table: bool = True) -> None:
     d = data
     print(f"\nMortgage Summary")
     print(f"{'='*50}")
@@ -109,21 +109,23 @@ def print_text(data: dict) -> None:
         print(f"  Homeowners insurance:  ${d['homeowners_insurance']:>11,.2f}/mo")
     print(f"{'='*50}\n")
 
-    print(
-        f"{'Mo':>4}  {'Mo Payment':>10}  {'Principal':>10}  {'Interest':>10}  "
-        f"{'PMI':>8}  {'Ins':>8}  {'Cum Payment':>12}  {'Cum Interest':>13}  {'Balance':>12}"
-    )
-    print(
-        f"{'-'*4}  {'-'*10}  {'-'*10}  {'-'*10}  "
-        f"{'-'*8}  {'-'*8}  {'-'*12}  {'-'*13}  {'-'*12}"
-    )
-
-    for r in d["rows"]:
+    if show_table:
         print(
-            f"{r['month']:>4}  ${r['monthly_payment']:>9,.2f}  ${r['principal_paid']:>9,.2f}  "
-            f"${r['interest']:>9,.2f}  ${r['pmi']:>7,.2f}  ${r['insurance']:>7,.2f}  "
-            f"${r['cumulative_payment']:>11,.2f}  ${r['cumulative_interest']:>12,.2f}  ${r['balance']:>11,.2f}"
+            f"{'Mo':>4}  {'Mo Payment':>10}  {'Principal':>10}  {'Interest':>10}  "
+            f"{'PMI':>8}  {'Ins':>8}  {'Cum Payment':>12}  {'Cum Interest':>13}  {'Balance':>12}"
         )
+        print(
+            f"{'-'*4}  {'-'*10}  {'-'*10}  {'-'*10}  "
+            f"{'-'*8}  {'-'*8}  {'-'*12}  {'-'*13}  {'-'*12}"
+        )
+
+    if show_table:
+        for r in d["rows"]:
+            print(
+                f"{r['month']:>4}  ${r['monthly_payment']:>9,.2f}  ${r['principal_paid']:>9,.2f}  "
+                f"${r['interest']:>9,.2f}  ${r['pmi']:>7,.2f}  ${r['insurance']:>7,.2f}  "
+                f"${r['cumulative_payment']:>11,.2f}  ${r['cumulative_interest']:>12,.2f}  ${r['balance']:>11,.2f}"
+            )
 
     print(f"\n{'='*50}")
     print(f"  Base monthly P&I:      ${d['pi_payment']:>11,.2f}")
@@ -370,11 +372,12 @@ def run(
     pmi: bool,
     pmi_rate: float,
     homeowners_insurance: float,
+    show_table: bool,
     html: bool,
     html_output: str,
 ) -> None:
     data = amortize(home_value, down_payment, annual_rate, term_years, pmi, pmi_rate, homeowners_insurance)
-    print_text(data)
+    print_text(data, show_table=show_table)
     if html:
         generate_html(data, html_output)
 
@@ -409,6 +412,12 @@ def main():
         help="Monthly homeowners insurance amount in dollars",
     )
     parser.add_argument(
+        "--no-table",
+        action="store_true",
+        default=False,
+        help="Suppress the amortization table, show summary only",
+    )
+    parser.add_argument(
         "--html",
         action="store_true",
         default=False,
@@ -437,6 +446,7 @@ def main():
         pmi=args.pmi,
         pmi_rate=args.pmi_rate,
         homeowners_insurance=args.insurance,
+        show_table=not args.no_table,
         html=args.html,
         html_output=args.html_output,
     )
