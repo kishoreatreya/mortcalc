@@ -23,14 +23,18 @@ python3 mortcalc.py <home_value> <down_payment> <rate> <term> [options]
 | `--pmi` | flag | Enable PMI; drops off automatically when LTV reaches 80% of home value |
 | `--pmi-rate RATE` | float | Annual PMI rate as a percentage (default: `0.5`) |
 | `--insurance AMOUNT` | float | Monthly homeowners insurance in dollars (default: `0`) |
+| `--no-table` | flag | Suppress the amortization table; show summary only |
 | `--html` | flag | Generate an HTML report with charts |
 | `--html-output FILE` | str | Output filename for the HTML report (default: `mortgage.html`) |
 
 ### Examples
 
 ```bash
-# Terminal output only
+# Full output (summary + amortization table)
 python3 mortcalc.py 2000000 250000 6.5 30 --pmi --pmi-rate 0.5 --insurance 200
+
+# Summary only, no table
+python3 mortcalc.py 2000000 250000 6.5 30 --pmi --no-table
 
 # Also generate HTML report
 python3 mortcalc.py 2000000 250000 6.5 30 --pmi --pmi-rate 0.5 --insurance 200 --html
@@ -43,7 +47,7 @@ python3 mortcalc.py 2000000 250000 6.5 30 --html --html-output report.html
 
 ### Terminal
 - **Summary header**: home value, down payment, loan amount, rate, term, PMI rate, insurance
-- **Amortization table**: one row per month — monthly payment, principal, interest, PMI, insurance, cumulative payment, cumulative interest, remaining balance
+- **Amortization table** (default on, suppressed with `--no-table`): one row per month — monthly payment, principal, interest, PMI, insurance, cumulative payment, cumulative interest, remaining balance
 - **Summary footer**: base P&I, PMI details, monthly payment, annual payment, total interest, total payment, total cost of loan
 
 ### HTML Report (`--html`)
