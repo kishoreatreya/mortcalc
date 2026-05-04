@@ -5,8 +5,40 @@ import argparse
 import json
 
 
+def validate_inputs(
+    home_value: float,
+    down_payment: float,
+    annual_rate: float,
+    term_years: int,
+    pmi: bool,
+    pmi_rate: float,
+    homeowners_insurance: float,
+) -> None:
+    """Validate loan inputs before running calculations."""
+    if home_value <= 0:
+        raise ValueError("home_value must be positive")
+    if down_payment < 0:
+        raise ValueError("down_payment must be non-negative")
+    if down_payment >= home_value:
+        raise ValueError("down_payment must be less than home_value")
+    if annual_rate < 0:
+        raise ValueError("rate must be non-negative")
+    if term_years <= 0:
+        raise ValueError("term must be positive")
+    if homeowners_insurance < 0:
+        raise ValueError("--insurance must be non-negative")
+    if pmi and pmi_rate <= 0:
+        raise ValueError("--pmi-rate must be positive when --pmi is set")
+
+
 def calculate_monthly_payment(principal: float, annual_rate: float, term_months: int) -> float:
     """Calculate fixed monthly P&I payment using the standard amortization formula."""
+    if principal < 0:
+        raise ValueError("principal must be non-negative")
+    if annual_rate < 0:
+        raise ValueError("annual_rate must be non-negative")
+    if term_months <= 0:
+        raise ValueError("term_months must be positive")
     if annual_rate == 0:
         return principal / term_months
     monthly_rate = annual_rate / 100 / 12
@@ -23,11 +55,14 @@ def amortize(
     homeowners_insurance: float,
 ) -> dict:
     """Run the amortization schedule and return all computed data."""
+    validate_inputs(home_value, down_payment, annual_rate, term_years, pmi, pmi_rate, homeowners_insurance)
+
     principal = home_value - down_payment
     term_months = term_years * 12
     pi_payment = calculate_monthly_payment(principal, annual_rate, term_months)
     pmi_threshold = home_value * 0.80
-    initial_monthly_pmi = principal * (pmi_rate / 100) / 12 if pmi else 0.0
+    monthly_pmi = principal * (pmi_rate / 100) / 12 if pmi else 0.0
+    initial_monthly_pmi = monthly_pmi if pmi and principal > pmi_threshold else 0.0
 
     rows = []
     balance = principal
@@ -37,21 +72,27 @@ def amortize(
     pmi_removed_month = None
 
     for month in range(1, term_months + 1):
+        starting_balance = balance
+        pmi_this_month = monthly_pmi if pmi and starting_balance > pmi_threshold else 0.0
+
         monthly_rate = annual_rate / 100 / 12
-        interest = balance * monthly_rate
+        interest = starting_balance * monthly_rate
         principal_paid = pi_payment - interest
         balance -= principal_paid
         if balance < 0:
             balance = 0
 
         total_interest += interest
+        total_pmi_paid += pmi_this_month
 
-        pmi_this_month = 0.0
-        if pmi and balance > pmi_threshold:
-            pmi_this_month = principal * (pmi_rate / 100) / 12
-            total_pmi_paid += pmi_this_month
-        elif pmi and pmi_removed_month is None and balance <= pmi_threshold:
-            pmi_removed_month = month
+        if (
+            pmi
+            and pmi_removed_month is None
+            and pmi_this_month > 0
+            and balance <= pmi_threshold
+            and month < term_months
+        ):
+            pmi_removed_month = month + 1
 
         monthly_payment = pi_payment + pmi_this_month + homeowners_insurance
         cumulative_payment += monthly_payment
@@ -132,7 +173,9 @@ def print_text(data: dict, show_table: bool = True) -> None:
     if d["pmi"]:
         print(f"  Initial monthly PMI:   ${d['initial_monthly_pmi']:>11,.2f}")
         if d["pmi_removed_month"]:
-            print(f"  PMI removed after:     month {d['pmi_removed_month']}")
+            print(f"  First PMI-free month:  month {d['pmi_removed_month']}")
+        elif d["initial_monthly_pmi"] == 0:
+            print("  PMI status:            not required at starting LTV")
         print(f"  Total PMI paid:        ${d['total_pmi_paid']:>11,.2f}")
     if d["homeowners_insurance"]:
         print(f"  Monthly insurance:     ${d['homeowners_insurance']:>11,.2f}")
@@ -157,7 +200,7 @@ def generate_html(data: dict, output_path: str) -> None:
     cum_interest_data = json.dumps([round(r["cumulative_interest"], 2) for r in rows])
 
     pmi_badge = (
-        f'<span class="badge">PMI removed month {d["pmi_removed_month"]}</span>'
+        f'<span class="badge">First PMI-free month {d["pmi_removed_month"]}</span>'
         if d["pmi"] and d["pmi_removed_month"] else ""
     )
 
@@ -177,6 +220,10 @@ def generate_html(data: dict, output_path: str) -> None:
     ]
     if d["pmi"]:
         summary_rows.append(("Initial Monthly PMI", f'${d["initial_monthly_pmi"]:,.2f}'))
+        if d["pmi_removed_month"]:
+            summary_rows.append(("First PMI-Free Month", f'{d["pmi_removed_month"]}'))
+        elif d["initial_monthly_pmi"] == 0:
+            summary_rows.append(("PMI Status", "Not required at starting LTV"))
         summary_rows.append(("Total PMI Paid", f'${d["total_pmi_paid"]:,.2f}'))
     summary_rows += [
         ("Monthly Payment", f'${d["initial_monthly_payment"]:,.2f}'),
@@ -192,8 +239,9 @@ def generate_html(data: dict, output_path: str) -> None:
 
     table_rows_html = ""
     for r in rows:
+        row_class = ' class="pmi-drop"' if d["pmi_removed_month"] == r["month"] else ""
         table_rows_html += (
-            f"<tr>"
+            f"<tr{row_class}>"
             f"<td>{r['month']}</td>"
             f"<td>${r['monthly_payment']:,.2f}</td>"
             f"<td>${r['principal_paid']:,.2f}</td>"
@@ -433,10 +481,18 @@ def main():
 
     args = parser.parse_args()
 
-    if args.down_payment >= args.home_value:
-        parser.error("down_payment must be less than home_value")
-    if args.pmi and args.pmi_rate <= 0:
-        parser.error("--pmi-rate must be positive when --pmi is set")
+    try:
+        validate_inputs(
+            args.home_value,
+            args.down_payment,
+            args.rate,
+            args.term,
+            args.pmi,
+            args.pmi_rate,
+            args.insurance,
+        )
+    except ValueError as e:
+        parser.error(str(e))
 
     run(
         home_value=args.home_value,
